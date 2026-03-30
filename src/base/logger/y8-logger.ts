@@ -73,6 +73,8 @@ class y8_logger {
 
 	/**
 	 * get_y8_logger - 工厂方法，按 service_name 返回单例
+	 * @param config logger 配置，必须包含 service_name 与 log_dir
+	 * @returns 对应 service_name 的单例 y8_logger 实例
 	 */
 	static get_y8_logger(config: y8_logger_config): y8_logger {
 		const key = config.service_name;
@@ -85,6 +87,7 @@ class y8_logger {
 	/**
 	 * init_file_logger - 创建文件写流并包装为 pino logger
 	 * 注意：该方法会被轮转逻辑调用以创建新文件
+	 * @returns Promise<void> 在初始化完成后解析
 	 */
 	private async init_file_logger(): Promise<void> {
 		const { file_path, file_stream } = await this.file_manager.create_new_log_file();
@@ -97,6 +100,8 @@ class y8_logger {
 
 	/**
 	 * rotate_file_if_needed - 根据写入字节数判断是否需要轮转，并进行轮转操作（平滑关闭旧流）
+	 * @param bytes_written 本次写入的大致字节数（用于判断是否超过阈值）
+	 * @returns Promise<void> 轮转完成后解析（若不需要轮转立即返回）
 	 */
 	private async rotate_file_if_needed(bytes_written: number): Promise<void> {
 		if (!this.rotation_manager.should_rotate_after_write(bytes_written)) return;
@@ -116,7 +121,9 @@ class y8_logger {
 	}
 
 	/**
-	 * compress_file - 将给定文件 gzip 压缩为 file.gz，并删除原文件
+	 * compress_file - 将给定文件压缩为 .zip 并删除原文件
+	 * @param file_path 要压缩的原始日志文件完整路径
+	 * @returns Promise<void> 在压缩并删除原文件后解析（若跳过或失败则解析）
 	 */
 	private async compress_file(file_path: string): Promise<void> {
 		const zip_path = file_path + ".zip";
@@ -209,6 +216,7 @@ class y8_logger {
 
 	/**
 	 * schedule_retention_cleanup - 安排定期清理旧日志（按天），首次延迟 60s 后触发
+	 * @returns void
 	 */
 	private schedule_retention_cleanup() {
 		const ms_per_day = 24 * 60 * 60 * 1000;
@@ -219,7 +227,8 @@ class y8_logger {
 	}
 
 	/**
-	 * cleanup_old_files - 根据 retention_days 删除旧文件（包含 .gz）
+	 * cleanup_old_files - 根据 retention_days 删除旧文件（包含 .zip）
+	 * @returns Promise<void> 删除完成后解析
 	 */
 	private async cleanup_old_files(): Promise<void> {
 		const retention_days = this.config.retention_days ?? 7;
@@ -242,9 +251,10 @@ class y8_logger {
 
 	/**
 	 * write_log - 内部写日志方法：同时写入控制台（可读）与文件（JSON），并触发轮转检查
-	 * @param level 日志级别
-	 * @param message 日志消息
-	 * @param obj 额外对象（可选），将与消息一起写入文件
+	 * @param level 日志级别（info/warn/error/debug 等）
+	 * @param message 要记录的文本消息
+	 * @param obj 可选对象，将连同 message 写入 JSON 文件（用于结构化日志）
+	 * @returns Promise<void> 在日志写入流程完成后解析
 	 */
 	private async write_log(level: pino.Level | string, message: string, obj?: any): Promise<void> {
 		// console pretty
@@ -268,24 +278,50 @@ class y8_logger {
 	}
 
 	/* 公开日志方法（snake_case） */
-	async info(message: string, obj?: any) {
+	/**
+	 * info - 记录 info 级别日志
+	 * @param message 文本消息
+	 * @param obj 可选对象，结构化数据
+	 * @returns Promise<void> 在写入并完成轮转检查后解析
+	 */
+	async info(message: string, obj?: any): Promise<void> {
 		await this.write_log("info", message, obj);
 	}
 
-	async warn(message: string, obj?: any) {
+	/**
+	 * warn - 记录 warn 级别日志
+	 * @param message 文本消息
+	 * @param obj 可选对象，结构化数据
+	 * @returns Promise<void>
+	 */
+	async warn(message: string, obj?: any): Promise<void> {
 		await this.write_log("warn", message, obj);
 	}
 
-	async error(message: string, obj?: any) {
+	/**
+	 * error - 记录 error 级别日志
+	 * @param message 文本消息
+	 * @param obj 可选对象，结构化数据
+	 * @returns Promise<void>
+	 */
+	async error(message: string, obj?: any): Promise<void> {
 		await this.write_log("error", message, obj);
 	}
 
-	async debug(message: string, obj?: any) {
+	/**
+	 * debug - 记录 debug 级别日志
+	 * @param message 文本消息
+	 * @param obj 可选对象，结构化数据
+	 * @returns Promise<void>
+	 */
+	async debug(message: string, obj?: any): Promise<void> {
 		await this.write_log("debug", message, obj);
 	}
 
 	/**
 	 * update_config - 运行时更新配置（支持更改轮转阈值与保留天数）
+	 * @param new_cfg 要更新的配置字段（Partial），例如 { max_size_bytes, retention_days }
+	 * @returns Promise<void> 在应用配置并触发必要清理后解析
 	 */
 	async update_config(new_cfg: Partial<y8_logger_config>): Promise<void> {
 		this.config = { ...this.config, ...new_cfg } as y8_logger_config;
@@ -296,7 +332,8 @@ class y8_logger {
 	}
 
 	/**
-	 * shutdown - 平滑关闭，清理定时器，关闭文件并可选压缩
+	 * shutdown - 平滑关闭 logger
+	 * @returns Promise<void> 在所有后台任务完成（尝试压缩最后一个文件）后解析
 	 */
 	async shutdown(): Promise<void> {
 		if (this.retention_timer) clearInterval(this.retention_timer);

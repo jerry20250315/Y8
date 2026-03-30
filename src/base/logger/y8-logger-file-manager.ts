@@ -23,6 +23,11 @@ export class y8_logger_file_manager {
   private current_file_day_key: string | null = null;
 
   constructor(log_dir: string, service_name: string) {
+    /**
+     * constructor - 初始化文件管理器
+     * @param log_dir 日志目录路径（相对或绝对）
+     * @param service_name 服务名，用于生成文件名
+     */
     this.log_dir = log_dir;
     this.service_name = service_name;
     this.host_name = os.hostname().replace(/\s+/g, "_");
@@ -70,7 +75,7 @@ export class y8_logger_file_manager {
 
   /**
    * create_new_log_file - 创建新的追加写流并重置计数器
-   * 返回 { file_path, file_stream }
+   * @returns 返回对象包含 file_path 和正在写入的 file_stream
    */
   async create_new_log_file(): Promise<{ file_path: string; file_stream: fs.WriteStream }> {
     const now = new Date();
@@ -85,7 +90,8 @@ export class y8_logger_file_manager {
   }
 
   /**
-   * close_current_file_and_wait - 结束并等待当前写流 flush 完成，返回旧文件路径或 null
+   * close_current_file_and_wait - 结束并等待当前写流 flush 完成
+   * @returns 解析为已关闭的旧文件路径，若没有打开文件则返回 null
    */
   async close_current_file_and_wait(): Promise<string | null> {
     if (!this.current_file_stream) return null;
@@ -114,6 +120,11 @@ export class y8_logger_file_manager {
     return this.current_file_path;
   }
 
+  /**
+   * increase_bytes - 增加当前文件的已写入字节计数（粗略估算）
+   * @param n 估算增加的字节数
+   * @returns void
+   */
   increase_bytes(n: number) {
     this.current_file_bytes += n;
   }
